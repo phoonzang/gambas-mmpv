@@ -1,0 +1,24 @@
+# Gambas Project File 3.0
+# Compiled with Gambas 3.10.0
+Startup=FMain
+Icon=if_browser_298735.png
+Version=0.2.85
+Component=gb.image
+Component=gb.gui.qt
+Component=gb.form
+Component=gb.db
+Description="it plays from internet on mpv and remembers history"
+TabSize=3
+Language=en_US
+Maintainer=phoon
+Vendor=phoon
+VendorPrefix=ph
+Address=phoon@phoon
+License=General Public License
+Prefix=1
+PackageName=ph-mmpv-0.1.9
+Packager=1
+Systems=ubuntu
+Menus=ubuntu:"Applications/Video"
+Categories=ubuntu:"Video"
+Groups=ubuntu:"games"

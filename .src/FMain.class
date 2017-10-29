@@ -1,0 +1,299 @@
+' Gambas class file
+
+Private mpvProcess As Process
+Private dbConnection As New Connection
+Private histResult As Result
+Private configPath As String
+Private canQuit As Boolean
+Private hPipe As File
+Private itemSelected As _TreeView_Item
+Private itemPlaying As _TreeView_Item
+Private histColumns As Collection
+'Private movieLength As Date
+Private moviePosition As Date
+
+Public Sub Form_Open()
+
+   configPath = User.home &/ ".config/mmpv"
+   File.Save(configPath &/ "mpv-ouput.txt", "")
+
+   forceSingleInstance()
+
+   ' open STDIN pipe
+   File.Save(configPath &/ "pipe", Null)
+   hPipe = Pipe configPath &/ "pipe" For Read Watch
+
+   dbConnect()
+   Me.Show
+
+   fillGrid()
+
+   If Application.Args.Count > 1 Then
+      txtURL.text = Application.Args[1]
+      btnPlay_Click()
+   Else
+      If cvHistory.count > 0 Then cvHistory[0].Selected = True
+   End If
+
+End
+
+Public Sub btnPlay_Click()
+
+   Dim tmpStr As String
+   Dim params As String[]
+   Dim i As Integer
+   Dim isFound As Boolean
+   Dim rs As Result
+
+   txtURL.text = Trim(Replace(Replace(txtURL.text, gb.crlf, ""), gb.lf, ""))
+
+   canQuit = False
+
+   If Not IsNull(mpvProcess) Then
+      If mpvProcess.State = 1 Then
+         Print #mpvProcess, "quit"
+         mpvProcess.Wait
+      End If
+   End If
+
+   ' check if we already have this url in the list
+   For i = 0 To cvHistory.Count - 1
+      If cvHistory[i][histColumns["url"]] = txtURL.text Then
+         Print "found in list"
+         itemSelected = cvHistory[i]
+         FMain.text = "mmpv - " & itemSelected[histColumns["title"]]
+         rs = dbConnection.exec("update history set date = datetime('now','localtime') where url = '" & itemSelected[histColumns["url"]] & "'")
+         dbConnection.Commit
+         fillGrid()
+         isFound = True
+         cvHistory[0].Selected = True
+         itemPlaying = itemSelected
+         Break
+      Endif
+   Next
+
+   ' not on the list - create new record
+   If Not isFound Then
+      rs = dbConnection.Create("history")
+      rs!url = txtURL.text
+      rs!date = Now
+      rs.Update
+      dbConnection.Commit
+      fillGrid()
+      cvHistory[0].Selected = True
+      itemPlaying = itemSelected
+   Endif
+
+   tmpStr = "--ytdl-format=137+140/137+171/best"
+      " --cursor-autohide=no"
+      " --save-position-on-quit"
+      " --ytdl-raw-options=yes-playlist="
+      " --hwdec=auto"
+      " --v"
+
+   params = Split("mpv " & itemSelected[histColumns["url"]] & " " & tmpStr, " ")
+   lblStatus.Text = "playing: " & itemSelected[histColumns["title"]]
+
+   mpvProcess = Exec params For Input Output As "mpvSTDOUT"
+   canQuit = True
+
+End
+
+Public Sub btnCommand_Click()
+
+   Print #mpvProcess, txtCommand.text
+
+End
+
+Public Sub cvHistory_Select()
+
+   itemSelected = cvHistory.Item
+   txtURL.Text = itemSelected[histColumns["url"]]
+
+End
+
+Public Sub cvHistory_Activate()
+
+   btnPlay_Click
+
+End
+
+Private Sub fillGrid()
+
+   Dim item As _TreeView_Item
+   Dim i As Integer
+
+   histResult = dbConnection.Exec("select date, username, title, length ,url from history order by date desc")
+
+   cvHistory.Clear
+   cvHistory.Columns.Count = 0
+   cvHistory.Enabled = False
+
+   ' get table fields
+   histColumns = New Collection
+
+   For i = 0 To histResult.Fields.Count - 1
+      If i > 0 Then cvHistory.Columns.count += 1
+      cvHistory.Columns[i].Text = Split(histResult.Fields[i].Name, ".")[1]
+      histColumns.Add(i, cvHistory.Columns[i].Text)
+   Next
+
+   ' fill the columnview
+   While (histResult.Available)
+      item = cvHistory.Add(cvHistory.Count, histResult[0])
+      For Each i In histColumns
+         If TypeOf(histResult[i]) = db.Date
+            item[i] = Format(histResult[i], "yyyy-mm-dd hh:nn:ss")
+         Else
+            item[i] = histResult[i]
+         End If
+      Next
+      histResult.MoveNext()
+   Wend
+
+   cvHistory.Columns[histColumns["title"]].Width = cvHistory.Width / 2   ' need autofit but this will do
+   cvHistory.Columns[histColumns["username"]].Alignment = Align.Center
+   cvHistory.Columns[histColumns["length"]].Alignment = Align.Center
+   cvHistory.Columns[histColumns["username"]].Width = 80
+
+   cvHistory.Enabled = True
+
+End
+
+Private Sub forceSingleInstance()
+
+   Dim tmpPid As String
+   Dim response As String
+
+   If Exist(configPath &/ "pid.txt") Then
+      tmpPid = Replace(File.Load(configPath &/ "pid.txt"), gb.lf, "")
+      Exec ["ps", "--no-headers", "q", tmpPid] To response
+      If InStr(response, "mmpv.gambas") > 0 Then
+         ' message url and quit
+         If Application.Args.Count > 1 Then Shell Subst("echo &1 >" & configPath &/ "pipe", Application.Args[1])
+         Quit
+      End If
+   End If
+   File.Save(configPath &/ "pid.txt", Application.id)
+
+End
+
+Private Sub createDB()
+
+   Dim hTable As Table
+
+   With dbConnection
+      .Type = "sqlite"
+      .host = configPath
+      .name = ""
+   End With
+
+   dbConnection.Open
+   dbConnection.Databases.Add("history.sqlite")
+   dbConnection.Close
+
+   dbConnection.name = "history.sqlite"
+   dbConnection.Open
+   hTable = dbConnection.Tables.Add("history")
+   hTable.Fields.Add("date", db.date)
+   hTable.Fields.Add("username", db.String)
+   hTable.Fields.Add("title", db.String)
+   hTable.Fields.Add("url", db.String)
+   hTable.Fields.Add("length", db.String)
+   hTable.PrimaryKey = ["url"]
+   hTable.Update
+   dbConnection.close
+
+End
+
+Private Sub dbConnect()
+
+   If Not Exist(configPath) Then Mkdir configPath
+   If Not Exist(configPath &/ "history.sqlite") Then createDB
+
+   With dbConnection
+      .Type = "sqlite"
+      .host = configPath
+      .name = "history.sqlite"
+      .Open
+   End With
+
+End
+
+Public Sub File_Read()
+
+   Dim sLine As String
+
+   Read #Last, sLine, Lof(Last)
+   txtURL.text = sLine
+   lblStatus.Text = "new url received: " & sLine
+   Print "new url received: " & sLine
+   btnPlay_Click()
+
+End
+
+Public Sub mpvSTDOUT_Read()
+
+   Dim tmpAr As String[]
+   Dim sLine As String
+   Dim rs As Result
+   Dim hFile As File
+
+   Read #Last, sLine, Lof(Last)
+   'Line Input #Last, sLine   ' this will block all events until whole line arrives thus its bad
+
+   Print sLine
+   If InStr(sLine, "-title=") > 0 Then
+      If itemPlaying[histColumns["title"]] = "" Then
+         tmpAr = Split(Right(sLine, - InStr(sLine, "-title=")), "=")
+         tmpAr = Split(tmpAr[1], Chr$(34))
+         tmpAr[1] = Replace(tmpAr[1], "'", "")
+         itemPlaying[histColumns["title"]] = tmpAr[1]
+         FMain.text = "mmpv - " & itemPlaying[histColumns["title"]]
+         rs = dbConnection.exec("update history set title = '" & itemPlaying[histColumns["title"]] & "' where url = '" & itemPlaying[histColumns["url"]] & "'")
+         dbConnection.Commit
+      End If
+   End If
+
+   If InStr(sLine, ".ts' for reading") > 0 And itemPlaying[histColumns["username"]] = "" Then
+      tmpAr = Split(sLine, "_")
+      itemPlaying[histColumns["username"]] = tmpAr[1]
+      rs = dbConnection.exec("update history set username = '" & itemPlaying[histColumns["username"]] & "' where url = '" & itemPlaying[histColumns["url"]] & "'")
+      dbConnection.Commit
+   Endif
+
+   If InStr(sLine, "[statusline]") And itemPlaying[histColumns["length"]] = "" Then
+      tmpAr = Split(Right(sLine, - InStr(sLine, "statusline")), " ")
+      itemPlaying[histColumns["length"]] = tmpAr[4]
+      moviePosition = tmpAr[2]
+      rs = dbConnection.exec("update history set length = '" & itemPlaying[histColumns["length"]] & "' where url = '" & itemPlaying[histColumns["url"]] & "'")
+      dbConnection.Commit
+   Endif
+
+   hFile = Open (configPath &/ "mpv-ouput.txt") For Append
+   Print #hFile, sLine
+
+End
+
+Public Sub mpvSTDOUT_Kill()
+
+   If canQuit Then Try FMain.close
+
+End
+
+Public Sub Form_Close()
+
+   hPipe.close
+   Try Kill configPath &/ "pipe"
+   If Not IsNull(mpvProcess) Then
+      If mpvProcess.State = 1 Then
+         Print #mpvProcess, "quit"
+         mpvProcess.Wait
+      Endif
+   End If
+
+   dbConnection.Close
+
+   Try Kill configPath &/ "pid.txt"
+
+End

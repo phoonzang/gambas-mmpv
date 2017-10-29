@@ -1,0 +1,55 @@
+# Gambas Form File 3.0
+
+{ Form Form
+  MoveScaled(0,28.5714,121,76)
+  Expand = True
+  Text = ("mmpv")
+  Icon = Picture["if_browser_298735.png"]
+  Arrangement = Arrange.Fill
+  { Panel2 Panel
+    MoveScaled(0,0,142,71)
+    Expand = True
+    Arrangement = Arrange.Vertical
+    { Panel1 HPanel
+      MoveScaled(1,1,140,7)
+      Spacing = True
+      Margin = True
+      { btnCommand Button
+        MoveScaled(2,1,17,5)
+        Text = ("Send Command")
+      }
+      { txtCommand TextBox
+        MoveScaled(20,1,18,5)
+      }
+      { Separator1 Separator
+        MoveScaled(39,1,6,4)
+      }
+      { btnPlay Button
+        MoveScaled(53,1,15,5)
+        Text = ("Play")
+      }
+      { txtURL TextBox
+        MoveScaled(69,1,66,5)
+        Expand = True
+      }
+    }
+    { cvHistory ColumnView
+      MoveScaled(1,9,66,54)
+      Expand = True
+      Resizable = True
+    }
+    { Separator2 Separator
+      MoveScaled(3,59,122,1)
+    }
+    { HPanel1 HPanel
+      MoveScaled(1,66,141,5)
+      AutoResize = True
+      { lblStatus Label
+        MoveScaled(3,1,36,4)
+        Expand = True
+        Alignment = Align.Center
+        Border = Border.Plain
+      }
+    }
+  }
+}
